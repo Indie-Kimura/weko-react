@@ -18,6 +18,7 @@ class AuthorExport extends React.Component {
       confirmMessage: '',
       isChecking: false,
       isExporting: false,
+      isStopping: false,
       errorMsg: '',
       taskId: localStorage.getItem('authors_export_id'),
       downloadLink: '',
@@ -108,6 +109,64 @@ class AuthorExport extends React.Component {
     }
   }
 
+  onStop = async () => {
+    try {
+      const response = await fetch(
+        bridge_params.entrypoints.stop,
+        {
+          method: "POST",
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ task_id: this.state.taskId }),
+        }
+      );
+      const json = await response.json();
+      if (json.data && json.data.status === 'success') {
+        this.setState({
+          isExporting: false,
+          isStopping: true
+        });
+      } else {
+        this.setState({
+          errorMsg: bridge_params.stop_export_error
+        });
+      }
+    } catch (error) {
+      this.setState({
+        errorMsg: bridge_params.internal_server_error
+      });
+    }
+  }
+
+  onResume = async () => {
+    try {
+      const response = await fetch(
+        bridge_params.entrypoints.resume,
+        {
+          method: "POST",
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }
+      );
+      const json = await response.json();
+      if (json.data) {
+        this.setState({
+          taskId: json.data.task_id
+        });
+        localStorage.setItem('authors_export_id', json.data.task_id);
+        this.checkExportStatus(true);
+      }
+    } catch (error) {
+      this.setState({
+        isExporting: false,
+        errorMsg: bridge_params.internal_server_error
+      });
+    }
+  }
+
   checkExportStatus = async (repeat = false, isCheckBeforeExport = false) => {
     this.setState({ isChecking: true });
     return await new Promise(resolve => {
@@ -167,9 +226,35 @@ class AuthorExport extends React.Component {
   }
 
   render() {
-    const { errorMsg, downloadLink, filename, isExporting, isChecking,
+    const { errorMsg, downloadLink, filename, isExporting, isChecking, isStopping,
       showConfirmModal, confirmMessage
     } = this.state;
+    let exportButton;
+    if (isExporting) {
+      exportButton = (
+        <button type="button" className="btn btn-primary margin" onClick={this.onStop}>
+          Stop
+        </button>
+      );
+    } else if (isChecking) {
+      exportButton = (
+        <button disabled type="button" className="btn btn-primary margin">
+          <div className="loading" /> {bridge_params.export_label}
+        </button>
+      );
+    } else if (isStopping){
+      exportButton = (
+        <button type="button" className="btn btn-primary margin" onClick={this.onResume}>
+          Resume
+        </button>
+      )
+    } else {
+      exportButton = (
+        <button type="button" className="btn btn-primary margin" onClick={() => this.onConfirm(true)}>
+          {bridge_params.export_label}
+        </button>
+      );
+    }
     return (
       <>
         <div className="col-sm-12">
@@ -181,10 +266,7 @@ class AuthorExport extends React.Component {
           </div>
           <div className="row">
             <div className="col-sm-12 text-center">
-              <button disabled={isExporting || isChecking} type="button" className="btn btn-primary margin" onClick={() => this.onConfirm(true)}>
-                {isExporting || isChecking ? <div className="loading" /> : <></>}
-                {bridge_params.export_label}
-              </button>
+              {exportButton}
               <button disabled={!isExporting} type="button" className="btn btn-primary margin cancel" onClick={() => this.onConfirm(false)}>
                 {bridge_params.cancel_label}
               </button>
@@ -197,7 +279,7 @@ class AuthorExport extends React.Component {
           </div>
           <div className="row">
             <div className="col-sm-12">
-              <a href={downloadLink}>
+                Author ID：<a href={downloadLink}>
                 {filename}
               </a>
             </div>
